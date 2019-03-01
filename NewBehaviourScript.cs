@@ -22,6 +22,34 @@ namespace Nspace
 
         }
 
+        static string UnixTime()
+        {
+            int unixTimestamp = (int)(System.DateTime.UtcNow.Subtract(new System.DateTime(1970, 1, 1))).TotalSeconds;
+            return unixTimestamp.ToString();
+        }
+
+        // https://stackoverflow.com/a/44734346/10536842
+        // Thank you!
+        static Texture2D duplicateTexture(Texture2D source)
+        {
+            RenderTexture renderTex = RenderTexture.GetTemporary(
+                        source.width,
+                        source.height,
+                        0,
+                        RenderTextureFormat.Default,
+                        RenderTextureReadWrite.Linear);
+
+            Graphics.Blit(source, renderTex);
+            RenderTexture previous = RenderTexture.active;
+            RenderTexture.active = renderTex;
+            Texture2D readableText = new Texture2D(source.width, source.height);
+            readableText.ReadPixels(new Rect(0, 0, renderTex.width, renderTex.height), 0, 0);
+            readableText.Apply();
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(renderTex);
+            return readableText;
+        }
+
         static void DoExtract()
         {
             string FolderPath = ""; //Path to folder containing assetbundles
@@ -40,57 +68,67 @@ namespace Nspace
 
             foreach (FileInfo f in new DirectoryInfo(FolderPath).GetFiles("*.unity3d"))
             {
-                AssetBundle bundle = AssetBundle.LoadFromFile(f.FullName);
-                Object[] assets1 = bundle.LoadAllAssets();
-                Stack<Texture2D> textures = new Stack<Texture2D>();
-                Stack<TextAsset> textassets = new Stack<TextAsset>();
-                foreach (Object ob1 in assets1)
+                try
                 {
-                    if (ob1.GetType().ToString() == "UnityEngine.Texture2D")
+                    AssetBundle bundle = AssetBundle.LoadFromFile(f.FullName);
+                    Object[] assets1 = bundle.LoadAllAssets();
+                    foreach (Object ob1 in assets1)
                     {
-                        textures.Push((Texture2D)ob1);
-                    }
-                    else if (ob1.GetType().ToString() == "UnityEngine.TextAsset")
-                    {
-                        textassets.Push((TextAsset)ob1);
-                    }
-                }
-                foreach (Texture2D tx1 in textures)
-                {
-                    try
-                    {
-                        byte[] b1 = tx1.GetRawTextureData();
-                        Texture2D tx2 = new Texture2D(tx1.width, tx1.height, tx1.format, false);
-                        tx2.LoadRawTextureData(b1);
-                        Color32[] colorArray = tx2.GetPixels32(0);
-                        Texture2D tx3 = new Texture2D(tx2.width, tx2.height, TextureFormat.ARGB32, false);
-                        tx3.SetPixels32(colorArray);
-                        tx3.Apply();
-                        try
+                        if (ob1.GetType().ToString() == "UnityEngine.Texture2D")
                         {
-                            Directory.CreateDirectory(FolderPath + "\\Texture2D");
+                            Texture2D tx1 = (Texture2D)ob1;
+                            try
+                            {
+                                Texture2D tx2 = duplicateTexture(tx1);
+                                Color32[] colorArray = tx2.GetPixels32(0);
+                                Texture2D tx3 = new Texture2D(tx2.width, tx2.height, TextureFormat.ARGB32, false);
+                                tx3.SetPixels32(colorArray);
+                                tx3.Apply();
+                                try
+                                {
+                                    Directory.CreateDirectory(FolderPath + "\\Texture2D");
+                                }
+                                catch { }
+                                if (!File.Exists(FolderPath + "\\Texture2D\\" + tx1.name + ".png"))
+                                {
+                                    File.WriteAllBytes(FolderPath + "\\Texture2D\\" + tx1.name + ".png", tx3.EncodeToPNG());
+                                }
+                                else
+                                {
+                                    File.WriteAllBytes(FolderPath + "\\Texture2D\\" + tx1.name + UnixTime() + ".png", tx3.EncodeToPNG());
+                                }
+                            }
+                            catch { }
+
                         }
-                        catch { }
-                        File.WriteAllBytes(FolderPath + "\\Texture2D\\" + tx1.name + ".png", tx3.EncodeToPNG());
-                    }
-                    catch { }
-                }
-                foreach (TextAsset text1 in textassets)
-                {
-                    try
-                    {
-                        byte[] b1 = text1.bytes;
-                        try
+                        else if (ob1.GetType().ToString() == "UnityEngine.TextAsset")
                         {
-                            Directory.CreateDirectory(FolderPath + "\\TextAsset");
+                            TextAsset text1 = (TextAsset)ob1;
+                            try
+                            {
+                                byte[] b1 = text1.bytes;
+                                try
+                                {
+                                    Directory.CreateDirectory(FolderPath + "\\TextAsset");
+                                }
+                                catch { }
+                                if (!File.Exists(FolderPath + "\\TextAsset\\" + text1.name + ".txt"))
+                                {
+                                    File.WriteAllBytes(FolderPath + "\\TextAsset\\" + text1.name + ".txt", b1);
+                                }
+                                else
+                                {
+                                    File.WriteAllBytes(FolderPath + "\\TextAsset\\" + text1.name + UnixTime() + ".txt", b1);
+                                }
+                            }
+                            catch { }
+
                         }
-                        catch { }
-                        File.WriteAllBytes(FolderPath + "\\TextAsset\\" + text1.name + ".txt", b1);
                     }
-                    catch { }
                 }
+                catch { }
             }
-            //EditorApplication.Exit(0);
+            EditorApplication.Exit(0);
         }
     }
 }
